@@ -1,0 +1,31 @@
+name: CI
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Format
+        run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+      - run: go vet ./...
+      - name: Unit, storage and real-cluster tests (race detector)
+        run: go test -race -count=1 ./raft ./kv ./lincheck
+      - name: Bug-injection tests (the simulator must catch each bug)
+        run: go test -count=1 -run 'TestCatches|TestDeterministic' -v ./sim
+  simulate:
+    # 1,000 seeded fault schedules per cluster size, every push.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - run: go test -count=1 -timeout 30m -run 'TestSimulation$' -v ./sim -seeds 1000 | grep -v -- '--- PASS\|=== RUN'
+        shell: bash
